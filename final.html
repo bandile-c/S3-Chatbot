@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S3 Interactive Quiz Portal</title>
+    <!-- AWS SDK for JavaScript -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1200.0.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #fcf8f8;
+            --panel-bg: #ffffff;
+            --primary-accent: #ff8fa3;
+            --primary-hover: #ff758f;
+            --text-dark: #4a4a4a;
+            --bubble-bot: #fff0f3;
+            --bubble-user: #ffe5ec;
+            --success-color: #2ecc71;
+            --error-color: #e74c3c;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 650px;
+            background: var(--panel-bg);
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(255, 143, 163, 0.15);
+            display: flex;
+            flex-direction: column;
+            height: 85vh;
+            overflow: hidden;
+            border: 1px solid #ffe5ec;
+        }
+
+        .chat-header {
+            background: var(--primary-accent);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .chat-box {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: linear-gradient(to bottom, #ffffff, #fffdfd);
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 14px 18px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .bot-message {
+            background-color: var(--bubble-bot);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            border: 1px solid #ffdde2;
+        }
+
+        .user-message {
+            background-color: var(--bubble-user);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+            color: #5c3d42;
+        }
+
+        .quiz-options-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 5px 0 10px 0;
+            width: 100%;
+            max-width: 80%;
+            align-self: flex-start;
+        }
+
+        .quiz-choice-btn {
+            background-color: #ffffff;
+            border: 2px solid #ffe5ec;
+            border-radius: 14px;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-dark);
+            font-family: inherit;
+        }
+
+        .quiz-choice-btn:hover:not([disabled]) {
+            background-color: #fff0f3;
+            border-color: var(--primary-accent);
+            transform: translateX(3px);
+        }
+
+        .quiz-choice-btn:disabled {
+            cursor: not-allowed;
+        }
+
+        .chat-input-area {
+            display: flex;
+            padding: 15px;
+            background: #ffffff;
+            border-top: 1px solid #ffe5ec;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            border: 2px solid #ffe5ec;
+            border-radius: 14px;
+            padding: 12px 18px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-accent);
+        }
+
+        button.send-btn {
+            background-color: var(--primary-accent);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            padding: 0 22px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button.send-btn:hover {
+            background-color: var(--primary-hover);
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <div class="chat-header">🌸 AWS Interactive Quiz Portal 🌸</div>
+    <div class="chat-box" id="chatBox">
+        <div class="message bot-message">✨ Welcome! Type "Start quiz" below to test your AWS Services knowledge module.</div>
+    </div>
+    <div class="chat-input-area">
+        <input type="text" id="userInput" placeholder="Type your message here..." onkeypress="handleKeyPress(event)">
+        <button class="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+</div>
+
+<script>
+    // 📍 PASTE YOUR NEW VALUES FROM YOUR CLOUDFORMATION STACK OUTPUTS HERE:
+    AWS.config.region = 'us-east-1'; 
+    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+        IdentityPoolId: 'REPLACE_WITH_YOUR_NEW_IDENTITY_POOL_ID'
+    });
+
+    const lexRuntime = new AWS.LexRuntimeV2();
+    const botId = 'REPLACE_WITH_YOUR_NEW_BOT_ID'; 
+    const botAliasId = 'REPLACE_WITH_YOUR_NEW_BOT_ALIAS_ID'; 
+    const localeId = 'en_US';
+    const sessionId = 'quiz-session-' + Date.now();
+
+    // 📚 5 Perfect AWS Cloud Questions and Answer Keys
+    const quizQuestions = [
+        {
+            question: "Question 1: Which AWS service provides secure, resizable compute capacity in the cloud?",
+            options: ["A) Amazon S3", "B) Amazon EC2", "C) AWS Lambda", "D) Amazon RDS"],
+            answer: "B"
+        },
+        {
+            question: "Question 2: What AWS service is best suited for storing static media files like images and videos?",
+            options: ["A) Amazon EBS", "B) Amazon DynamoDB", "C) Amazon S3", "D) AWS CodePipeline"],
+            answer: "C"
+        },
+        {
+            question: "Question 3: Which service allows you to manage user identities and permissions securely across AWS resources?",
+            options: ["A) Amazon Cognito", "B) AWS IAM", "C) AWS Shield", "D) Amazon GuardDuty"],
+            answer: "B"
+        },
+        {
+            question: "Question 4: What is the primary purpose of an Amazon Route 53 service configuration?",
+            options: ["A) Serverless code execution", "B) Relational database management", "C) Domain Name System (DNS) web service", "D) Automatic traffic load balancing"],
+            answer: "C"
+        },
+        {
+            question: "Question 5: Which AWS tool helps monitor your applications, visualize logs, and trigger operational alarms?",
+            options: ["A) AWS CloudTrail", "B) AWS Trusted Advisor", "C) Amazon CloudWatch", "D) AWS Config"],
+            answer: "C"
+        }
+    ];
+
+    let currentStep = -1; // -1 means quiz hasn't started yet
+    const chatBox = document.getElementById('chatBox');
+    const userInput = document.getElementById('userInput');
+
+    function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    }
+
+    function sendMessage() {
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        appendMessage(text, 'user-message');
+        userInput.value = '';
+
+        // If the quiz hasn't started and they say start, start it locally
+        if (currentStep === -1 && text.toLowerCase().includes('start')) {
+            currentStep = 0;
+            setTimeout(() => {
+                loadQuizQuestion();
+            }, 800);
+            sendSilentPingToLex(text); // Keeps Lex awake
+            return;
+        }
+
+        // Standard message routing to Lex fallback if they talk normally
+        sendSilentPingToLex(text);
+    }
+
+    function appendMessage(text, className) {
+        if (!text) return;
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', className);
+        messageDiv.innerText = text;
+        chatBox.appendChild(messageDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function loadQuizQuestion() {
+        if (currentStep >= quizQuestions.length) {
+            appendMessage("🎉 Quiz complete! Outstanding work running through your AWS infrastructure evaluation.", 'bot-message');
+            return;
+        }
+
+        const activeQuizItem = quizQuestions[currentStep];
+        appendMessage(activeQuizItem.question, 'bot-message');
+
+        const optionsWrapper = document.createElement('div');
+        optionsWrapper.classList.add('quiz-options-wrapper');
+
+        activeQuizItem.options.forEach(option => {
+            const btn = document.createElement('button');
+            btn.classList.add('quiz-choice-btn');
+            btn.innerText = option;
+
+            const letterChoice = option.charAt(0);
+
+            btn.onclick = function() {
+                const allButtons = optionsWrapper.querySelectorAll('.quiz-choice-btn');
+                allButtons.forEach(b => b.disabled = true);
+
+                // Check answer validity and apply instant colors
+                if (letterChoice === activeQuizItem.answer) {
+                    btn.style.backgroundColor = 'var(--success-color)';
+                    btn.style.color = '#ffffff';
+                    btn.style.borderColor = 'var(--success-color)';
+                } else {
+                    btn.style.backgroundColor = 'var(--error-color)';
+                    btn.style.color = '#ffffff';
+                    btn.style.borderColor = 'var(--error-color)';
+                    
+                    // Highlight correct answer in green outline
+                    allButtons.forEach(b => {
+                        if (b.innerText.startsWith(activeQuizItem.answer)) {
+                            b.style.border = '2px solid var(--success-color)';
+                            b.style.color = 'var(--success-color)';
+                        }
+                    });
+                }
+
+                sendSilentPingToLex(letterChoice);
+
+                // Shift to the next step cleanly after display pause
+                currentStep++;
+                setTimeout(() => {
+                    appendMessage(letterChoice, 'user-message');
+                    loadQuizQuestion();
+                }, 1400);
+            };
+
+            optionsWrapper.appendChild(btn);
+        });
+
+        chatBox.appendChild(optionsWrapper);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function sendSilentPingToLex(choiceText) {
+        const params = {
+            botId: botId,
+            botAliasId: botAliasId,
+            localeId: localeId,
+            sessionId: sessionId,
+            text: choiceText
+        };
+
+        lexRuntime.recognizeText(params, function(err, data) {
+            if (err && currentStep === -1) {
+                console.error(err);
+                appendMessage("⚠️ Connection indicator note: Please update your variables on lines 128-132.", 'bot-message');
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
